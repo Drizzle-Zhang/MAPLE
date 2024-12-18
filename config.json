@@ -1,0 +1,27 @@
+{
+    "args_t2d": {
+        "ct_problem_type": "classification",
+        "encoder_hidden_str": "1024,1024,256,256,64,64",
+        "decoder_hidden_str": "32,32,16,16",
+        "latent_size": 32,
+        "checkpoint_path": "./checkpoints/T2D_ckpt.pt",
+        "feature_size": 303212
+    },
+    "args_cvd": {
+        "ct_problem_type": "classification",
+        "encoder_hidden_str": "1024,1024,256,256,64,64",
+        "decoder_hidden_str": "32,32,16,16",
+        "latent_size": 32,
+        "checkpoint_path": "./checkpoints/CVD_ckpt.pt",
+        "feature_size": 307457
+    },
+    "args_age": {
+        "ct_problem_type": "regression",
+        "encoder_hidden_str": "1024,1024,512,512,256,256,64,64",
+        "decoder_hidden_str": "32,32,16,16",
+        "latent_size": 32,
+        "checkpoint_path": "./checkpoints/Age_ckpt.pt",
+        "feature_size": 70110
+    },
+    "device": "cuda"
+}
