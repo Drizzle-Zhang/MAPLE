@@ -1,7 +1,7 @@
 # MAPLE: Methylation Age and Disease-risk Prediction through Pairwise LEarning
 
 ## Overview
-Conventional epigenetic clocks encounter challenges in generalizability, especially when there exist significant batch effects between the training and test datasets, restricting their clinical applicability for aging assessment. Here, we present MAPLE, a robust computational framework for Methylation Age and disease-risk prediction through Pairwise LEarning. MAPLE utilizes pairwise learning to discern the relative relationships between two DNA methylation profiles regarding age or disease risk. It effectively identifies aging- or disease-related biological signals while mitigating technical biases in the data. MAPLE outperforms five competing methods, achieving a median absolute error of 1.6 years across 31 benchmark tests from diverse studies, sequencing platforms, data preprocessing methods, and tissue types. Furthermore, MAPLE excels in assessing aging-related disease risk, with mean AUCs of 0.96 for disease identification and 0.83 for pre-disease status detection. In conclusion, MAPLE represents a reliable tool with great potential for accessing epigenetic age and aging-related disease risk clinically.
+Conventional epigenetic clocks encounter challenges in generalizability, especially when there exist significant batch effects between the training and test datasets, restricting their clinical applicability for aging assessment. Here, we present MAPLE, a robust computational framework for Methylation Age and disease-risk prediction through Pairwise LEarning. MAPLE utilizes pairwise learning to discern the relative relationships between two DNA methylation profiles regarding age or disease risk. It effectively identifies aging- or disease-related biological signals while mitigating technical biases in the data. MAPLE outperforms five competing methods, achieving a median absolute error of 1.6 years across 31 benchmark tests from diverse studies, sequencing platforms, data preprocessing methods, and tissue types. Furthermore, MAPLE excels in assessing aging-related disease risk, with mean AUCs of 0.97 for disease identification and 0.85 for pre-disease status detection. In conclusion, MAPLE represents a reliable tool with great potential for accessing epigenetic age and aging-related disease risk clinically.
 
 ## Features
 - **Robust Methylation Age Prediction**: Accurately predicts epigenetic age across diverse datasets
@@ -49,7 +49,7 @@ To use MAPLE, you’ll need to download the model checkpoints as a compressed ar
 
 Download model parameters: [Google Drive](https://drive.google.com/file/d/1Qyv6yvj2seBarpMudK8O9xGqEZja6Wkt/view?usp=sharing)
 
-## Usage
+## Inference
 
 1. Preprocess raw DNA methylation data (IDAT → Beta matrix)
 
@@ -70,12 +70,31 @@ Download model parameters: [Google Drive](https://drive.google.com/file/d/1Qyv6y
 	```bash
 	python MAPLE_inference.py \
 	  --input_path ./examples/input_data/Beta_values.csv \
-	  --sample_info ./examples/test_meta.csv \
+	  --sample_info ./examples/input_data/test_meta.csv \
 	  --output_path ./examples/MAPLE_output.csv
 	```
 
-## Output
+3. Output
+
 MAPLE generates a CSV file containing:
 - Predicted epigenetic age
 - CVD risk score
 - T2D risk score
+
+## Training
+
+1. Training Data Preparation
+
+​	Users can download preprocessed training data from [**figshare**](https://drive.google.com/file/d/1_O6fP066Yiq_2qdwcEv3kdAnZtfAsTYW/view?usp=drive_link) to perform model training locally.
+
+2. Execute MAPLE Training
+
+​	Run the following command to train the MAPLE model:
+
+```
+python MAPLE_train.py \
+  --problem_type EpigeneticAge \  # Task type for training 
+  --data_source ./train_dataset/epiAge_traindata.npz \  # Path to the training data  
+  --path_save ./MAPLE_train_out  # Output directory for logs and trained models  
+```
+

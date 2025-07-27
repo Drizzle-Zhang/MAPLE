@@ -145,7 +145,7 @@ def mat2npy(path_tmp, df_mat_in, df_meta_in, file_cpgs_ref, missing_rate=0.8):
     # Align CpG sites with reference and save
     old_dict = np.load(file_npy, allow_pickle=True).item()
     old_cpg_list = read_stringList_FromFile(file_cpgs)
-    ref_cpg_list = read_stringList_FromFile(file_cpgs_ref)
+    ref_cpg_list = np.load(file_cpgs_ref)
     save_dict = order_cpg_to_ref_fill0(old_cpg_list, ref_cpg_list, old_dict, list_samples)
     
     # Save sample indices
@@ -361,9 +361,9 @@ class BioAgePipeline:
         os.makedirs(self.cache_dir, exist_ok=True)
         
         # Set paths for data processing
-        self.file_cpgs_cvd = os.path.join(self.data_root, 'data/cpgs_blood_CVD')
-        self.file_cpgs_t2d = os.path.join(self.data_root, 'data/cpgs_blood_T2D')
-        self.file_cpgs_age = os.path.join(self.data_root, 'data/cpgs_age.txt')
+        self.file_cpgs_cvd = os.path.join(self.data_root, 'data/cpgs_blood_CVD.npy')
+        self.file_cpgs_t2d = os.path.join(self.data_root, 'data/cpgs_blood_T2D.npy')
+        self.file_cpgs_age = os.path.join(self.data_root, 'data/cpgs_age.npy')
 
         # Create temporary directory for this run
         if not self.serialize_mode:
