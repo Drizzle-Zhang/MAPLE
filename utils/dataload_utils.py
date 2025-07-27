@@ -88,7 +88,7 @@ class geo_npz_Dataset_update(Dataset):
         return feature, age, additional
 
 
-class geo_npz_Dataset_pretrain(Dataset):
+class geo_npz_Dataset_train(Dataset):
     """
     Dataset class for pretraining with methylation data.
     
@@ -101,8 +101,7 @@ class geo_npz_Dataset_pretrain(Dataset):
         key_list: List of sample IDs to use
     """
     
-    def __init__(self, x_npy, index_file, data_type,
-                 target_name="age"):
+    def __init__(self, file_npy, data_type):
         """
         Initialize the pretrain dataset.
         
@@ -114,32 +113,28 @@ class geo_npz_Dataset_pretrain(Dataset):
         """
         # self.y_pd = pd.read_csv(y_csv)
 
-        self.data = np.load(x_npy, allow_pickle=True)
-        self.target_name = target_name
+        data_npy = np.load(file_npy, allow_pickle=True)
+        self.data = data_npy['data']
 
-        # Load train/test/pretrain indices
-        with open(index_file, 'rb') as f:
-            train_index = pickle.load(f)
-            test_index = pickle.load(f)
-            pretrain_index = pickle.load(f)
+        # npy data
 
         # Filter data based on data_type
         if data_type == 'train':
-            self.key_list = train_index
+            self.key_list = data_npy['train_index']
             all_key_list = self.data.item().keys()
-            move_list = [value for value in all_key_list if value not in train_index]
+            move_list = [value for value in all_key_list if value not in self.key_list]
             for test_name in move_list:
                 del self.data.item()[test_name]
-        elif data_type == 'test':
-            self.key_list = test_index
+        elif data_type == 'val':
+            self.key_list = data_npy['val_index']
             all_key_list = self.data.item().keys()
-            move_list = [value for value in all_key_list if value not in test_index]
+            move_list = [value for value in all_key_list if value not in self.key_list]
             for test_name in move_list:
                 del self.data.item()[test_name]
         else:  # pretrain
-            self.key_list = pretrain_index
+            self.key_list = data_npy['pretrain_index']
             all_key_list = self.data.item().keys()
-            move_list = [value for value in all_key_list if value not in pretrain_index]
+            move_list = [value for value in all_key_list if value not in self.key_list]
             for test_name in move_list:
                 del self.data.item()[test_name]
 
@@ -164,11 +159,11 @@ class geo_npz_Dataset_pretrain(Dataset):
                   age is the target, and additional is a dictionary of metadata
         """
         key_name = self.key_list[index]
-        feature = self.data.item().get(key_name)["feature"]
+        feature = self.data.item().get(key_name)["feature"].astype(np.float32)
         # feature = M2beta_zx(feature)
         # print("#"*30)
         # print(np.std(feature))
-        age = self.data.item().get(key_name)["target"]
+        age = self.data.item().get(key_name)["target"].astype(np.float32)
         additional = self.data.item().get(key_name)["additional"]
         return feature, age, additional
 
@@ -246,7 +241,7 @@ class geo_npz_Dataset_inference(Dataset):
                   and additional is a dictionary of metadata
         """
         key_name = self.key_list[index]
-        feature = self.data.item().get(key_name)["feature"]
+        feature = self.data.item().get(key_name)["feature"].astype(np.float32)
         # feature = M2beta_zx(feature)
         # print("#"*30)
         # print(np.std(feature))

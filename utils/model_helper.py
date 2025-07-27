@@ -117,3 +117,19 @@ def get_lr(optimizer):
     for param_group in optimizer.param_groups:
         lr_list.append(param_group['lr'])
     return lr_list
+
+
+class LossSoft(nn.Module):
+    def __init__(self, lambda_1=1, epsilon=0.1):
+        super(LossSoft, self).__init__()
+        self.lambda_1 = lambda_1
+        self.epsilon = epsilon
+
+    def forward(self, pred_age, true_age):
+        diff_age = pred_age - true_age
+        # diff_age.requires_grad = True
+        interval_1 = (diff_age < -self.epsilon)
+        interval_2 = (diff_age > self.epsilon)
+        loss_total = torch.mean(-torch.pow(diff_age, 1) * interval_1) + \
+                     torch.mean(torch.pow(diff_age, 1) * interval_2) * self.lambda_1
+        return loss_total

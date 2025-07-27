@@ -255,6 +255,8 @@ def data_augmentation(df_mat_in, df_meta_in, num_aug, by_project=True, use_col='
         df_drop_meta = df_meta_in.copy()
         df_drop_meta.index = df_drop.columns
         df_drop_meta['sample_id'] = df_drop.columns
+        df_drop_meta['project_id'] = \
+            f"{'_'.join([one for one in np.unique(df_meta_in['project_id'])])}_{i}"
         list_cpgs = list(df_mat_in.index)
         # list_samples = list(df_mat_in.columns) + list(df_drop.columns)
         # print(df_mat_in.shape)

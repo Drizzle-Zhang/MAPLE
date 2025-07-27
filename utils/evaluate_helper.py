@@ -154,7 +154,7 @@ def classification_eval(predictions, labels):
 
     # AUROC
     # roc_auc_score(predictions.cpu().detach().numpy(), torch.cat(list_pred)[:,1].cpu().detach().numpy())
-    return accuracy, precision, recall, f1, roc_auc, prc_auc
+    return accuracy.numpy(), precision.numpy(), recall.numpy(), f1.numpy(), roc_auc, prc_auc
 
 
 def msg(text):
