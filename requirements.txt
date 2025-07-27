@@ -1,0 +1,8 @@
+numpy==2.2.6
+pandas==2.3.0
+anndata==0.11.4
+scanpy==1.11.2
+torch==2.7.1
+Bio==1.8.0
+pygtrans==1.6.1
+dataclasses_json==0.6.7

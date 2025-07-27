@@ -22,6 +22,5 @@
         "latent_size": 32,
         "checkpoint_path": "./checkpoints/Age_ckpt.pt",
         "feature_size": 70110
-    },
-    "device": "cuda"
+    }
 }
