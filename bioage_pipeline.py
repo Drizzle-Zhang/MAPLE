@@ -16,6 +16,7 @@ import numpy as np
 import pandas as pd
 import anndata as ad
 import scanpy as sc
+from scipy.spatial.distance import cdist
 from models.FC import FCNet_H_class, FCNet_H
 from models.CT import ContrastiveEncoder
 from utils.file_utils import read_stringList_FromFile, write_stringList_2File, FileUtils
@@ -194,76 +195,49 @@ def risk_score(path_tmp, encoder, predictor_model, adata_in, df_meta_in, disease
 
     # Create AnnData object with latent features
     adata_pred = ad.AnnData(X=latent_feature.cpu().detach().numpy(), obs=df_meta_in)
-    adata_in.obs['type'] = 'background'
+    adata_in.obs['type'] = 'reference'
     adata_pred.obs['type'] = 'new_sample'
     # with warnings.catch_warnings():
     #     warnings.simplefilter("ignore")
 
     # Combine with background data and scale
     adata_out = ad.concat([adata_in, adata_pred], join='outer')
-    sc.pp.scale(adata_out, max_value=5)
-    sc.tl.pca(adata_out, svd_solver='arpack', n_comps=2)
-    # sc.pl.pca(adata_out, color='type', save=)
-    # fig, ax = plt.subplots(figsize=(8, 6))
-    # sc.pl.pca(adata_out, color="type", show=False, ax=ax)
-    # plt.savefig(os.path.join(path_tmp, 'PCA_type.png'))
-    
-    # Calculate risk score based on disease type
+
+    # health distance
+    health_ids = adata_in.obs.loc[adata_in.obs['health_label'], :].index
+    adata_health = adata_in[health_ids, :]
+    distance_matrix = cdist(adata_out.X, adata_health.X, metric="euclidean")
+    adata_out.obs["euc_dist_health"] = distance_matrix.mean(axis=1)
+    min_health = np.nanquantile(adata_out.obs.loc[adata_out.obs["age"] < 20, "euc_dist_health"], 0.25)
     if disease == 'CVD':
-        adata_out.obs['Risk_score'] = adata_out.obsm['X_pca'][:, 0]*0.5 + adata_out.obsm['X_pca'][:, 1]*0.5
-        disease_name = 'stroke'
+        max_health = np.nanquantile(adata_out.obs.loc[adata_out.obs["disease"] == "stroke", "euc_dist_health"], 0.75)
     elif disease == 'T2D':
-        adata_out.obs['Risk_score'] = adata_out.obsm['X_pca'][:, 0]*0.69 + adata_out.obsm['X_pca'][:, 1]*0.31
-        disease_name = 'type 2 diabetes'
+        max_health = np.nanquantile(adata_out.obs.loc[adata_out.obs["disease"] == "type 2 diabetes", "euc_dist_health"], 0.75)
+    euc_norm = (adata_out.obs["euc_dist_health"] - min_health) / (max_health - min_health)
+    euc_norm = np.clip(euc_norm, 0, 1)
+    adata_out.obs["euc_dist_health_norm"] = euc_norm
 
-    # Prepare for risk score normalization
-    df_pc_risk = adata_out.obs.copy()
-    df_pc_risk['sample_id'] = df_pc_risk.index
-    # df_pc_risk = df_pc_risk.loc[
-    #              ~((df_pc_risk['disease'] != 'control') & (df_pc_risk['sample_id'].apply(lambda x: len(x.split('_'))==2))), :]
-    # # df_pc_risk = df_pc_risk.loc[df_pc_risk['tissue'] == 'whole blood']
-    # import pdb; pdb.set_trace()
-    
-    # Calculate min and max risk scores for normalization
-    min_risk = np.median(df_pc_risk.loc[(df_pc_risk['age'] < 25), 'Risk_score'])
-    max_risk = np.median(df_pc_risk.loc[df_pc_risk['disease'] == disease_name, 'Risk_score'])
-    
-    # Apply normalization based on direction of risk
-    if min_risk > max_risk:
-        # If risk decreases with score (inverse relationship)
-        min_risk = np.percentile(df_pc_risk.loc[(df_pc_risk['age'] <= 18), 'Risk_score'], 50)
-                #     min_risk = np.percentile(df_pc_risk.loc[(df_pc_risk['bmi'] > 18.5) & (df_pc_risk['bmi'] < 25), 'PC1'], 75)
-        max_risk = np.percentile(df_pc_risk.loc[df_pc_risk['disease'] == disease_name, 'Risk_score'], 25)
-        risk_scores = (df_pc_risk['Risk_score'] - max_risk) / (min_risk - max_risk)
-        df_pc_risk['Risk_score_norm'] = 1 - risk_scores
-    else:
-        # If risk increases with score (direct relationship)
-        min_risk = np.percentile(df_pc_risk.loc[(df_pc_risk['age'] <= 18), 'Risk_score'], 50)
-                #     min_risk = np.percentile(df_pc_risk.loc[(df_pc_risk['bmi'] > 18.5) & (df_pc_risk['bmi'] < 25), 'PC1'], 25)
-        max_risk = np.percentile(df_pc_risk.loc[df_pc_risk['disease'] == disease_name, 'Risk_score'], 75)
-        df_pc_risk['Risk_score_norm'] = (df_pc_risk['Risk_score'] - min_risk) / (max_risk - min_risk)
-
-    # Clip normalized risk scores to [0, 1]
-    df_pc_risk.loc[df_pc_risk['Risk_score_norm'] > 1, 'Risk_score_norm'] = 1
-    df_pc_risk.loc[df_pc_risk['Risk_score_norm'] < 0, 'Risk_score_norm'] = 0
-
-    # Apply specific adjustment for CVD risk scores
+    # disease distance
+    disease_ids = adata_in.obs.loc[adata_in.obs['disease_label'], :].index
+    adata_disease = adata_in[disease_ids]
+    distance_matrix = cdist(adata_out.X, adata_disease.X, metric="euclidean")
+    adata_out.obs["euc_dist_disease"] = distance_matrix.mean(axis=1)
+    max_disease = np.nanquantile(adata_out.obs.loc[adata_out.obs["age"] < 20, "euc_dist_disease"], 0.75)
     if disease == 'CVD':
-        # Adjust high risk scores (>0.8) with a custom scaling function
-        high_mask = df_pc_risk['Risk_score_norm'] > 0.8
-        df_pc_risk.loc[high_mask, 'Risk_score_norm'] = (
-            (df_pc_risk.loc[high_mask, 'Risk_score_norm'] - 0.8) * 0.5 + (0.8 + 0.2 * 0.5)
-        )
-        # Rescale lower risk scores (≤0.8) to maintain continuity
-        low_mask = df_pc_risk['Risk_score_norm'] <= 0.8
-        df_pc_risk.loc[low_mask, 'Risk_score_norm'] = (
-            df_pc_risk.loc[low_mask, 'Risk_score_norm'] * (0.8 + 0.2 * 0.5) / 0.8
-        )
+        min_disease = np.nanquantile(adata_out.obs.loc[adata_out.obs["disease"] == "stroke", "euc_dist_disease"], 0.25)
+    elif disease == 'T2D':
+        min_disease = np.nanquantile(adata_out.obs.loc[adata_out.obs["disease"] == "type 2 diabetes", "euc_dist_disease"], 0.25)
+    euc_disease_norm = (adata_out.obs["euc_dist_disease"] - min_disease) / (max_disease - min_disease)
+    euc_disease_norm = 1 - np.clip(euc_disease_norm, 0, 1)
+    adata_out.obs["euc_dist_disease_norm"] = euc_disease_norm
+
+    # risk score
+    adata_out.obs["Risk_score_norm"] = \
+        (adata_out.obs["euc_dist_health_norm"] + adata_out.obs["euc_dist_disease_norm"]) / 2
 
     # Add risk scores to output metadata
     df_meta_out = df_meta_in.copy()
-    df_pc_risk = df_pc_risk.drop_duplicates(subset='sample_id')
-    df_meta_out['Risk_score_norm'] = df_pc_risk.loc[df_meta_in.index, 'Risk_score_norm']
+    df_meta_out['Risk_score_norm'] = adata_out.obs.loc[df_meta_in.index, 'Risk_score_norm']
 
     return df_meta_out
 
@@ -433,7 +407,7 @@ class BioAgePipeline:
         df_meta_cvd = risk_score(
             path_cvd, self.encoder_cvd, self.predictor_model_cvd, 
             self.adata_cvd, df_meta_sample, 'CVD', self.device)
-        
+
         df_meta_t2d = risk_score(
             path_t2d, self.encoder_t2d, self.predictor_model_t2d, 
             self.adata_t2d, df_meta_sample, 'T2D', self.device)
