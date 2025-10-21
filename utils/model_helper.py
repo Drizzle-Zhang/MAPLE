@@ -127,9 +127,10 @@ class LossSoft(nn.Module):
 
     def forward(self, pred_age, true_age):
         diff_age = pred_age - true_age
-        # diff_age.requires_grad = True
         interval_1 = (diff_age < -self.epsilon)
         interval_2 = (diff_age > self.epsilon)
         loss_total = torch.mean(-torch.pow(diff_age, 1) * interval_1) + \
                      torch.mean(torch.pow(diff_age, 1) * interval_2) * self.lambda_1
+        # loss_total = torch.mean(torch.pow(diff_age, 2) * interval_1) + \
+        #              torch.mean(torch.pow(diff_age, 2) * interval_2) * self.lambda_1
         return loss_total

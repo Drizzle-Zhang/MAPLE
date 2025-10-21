@@ -2,16 +2,9 @@
 #%%
 import torch.nn as nn
 import torch
-import torch.optim as optim
-import torch.utils.data as data_utils
-import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
-from torch.utils.tensorboard import SummaryWriter
 import torch.optim as optim
 import torch.backends.cudnn as cudnn
-import PIL.Image
-from torchvision.transforms import ToTensor
-from datetime import datetime
 from collections import Counter
 
 import numpy as np
@@ -78,43 +71,41 @@ def evaluate_risk(encoder_model, decoder_model, predictor_model, criterion, load
                     loss_mrs = criterion(predict_mrs_diff, true_mrs_diff)
                     [mae_value, rmse_value, R_value,  medae_value] = \
                         methylage_evaluate_score(predict_mrs_diff, true_mrs_diff)
-                    logger.info( f"epoch:{epoch:3d}, {prefix}, mrs_loss: {loss_mrs:6.3f}, "
-                                 f"mae:{mae_value:6.3f}, {prefix} rmse:{rmse_value:6.3f}, R:{R_value:3.3f}, Med:{medae_value:6.3f}" )
+                    # logger.info( f"epoch:{epoch:3d}, {prefix}, mrs_loss: {loss_mrs:6.3f}, "
+                    #              f"mae:{mae_value:6.3f}, {prefix} rmse:{rmse_value:6.3f}, R:{R_value:3.3f}, Med:{medae_value:6.3f}" )
                 else:
                     loss_mrs = 0
                 break
             break
 
     with torch.no_grad():
-        if prefix != "train":
-            list_pred = []
-            list_true = []
-            for batch_idx, (feature, targets, additional) in enumerate(loader):
-                feature = feature.to(device)
-                true_status = additional['type_index'].to(device)
-                latent_feature = encoder_model(feature)
-                predicts = predictor_model(latent_feature)
-                list_pred.append(predicts)
-                list_true.append(true_status)
+        # if prefix != "train":
+        list_pred = []
+        list_true = []
+        for batch_idx, (feature, targets, additional) in enumerate(loader):
+            feature = feature.to(device)
+            true_status = additional['type_index'].to(device)
+            latent_feature = encoder_model(feature)
+            predicts = predictor_model(latent_feature)
+            list_pred.append(predicts)
+            list_true.append(true_status)
 
-            acc_val, precision_val, recall_val, f1_val, roc_val, prc_val = \
-                classification_eval(torch.cat(list_pred), torch.cat(list_true))
-            logger.info("#"*20)
-            logger.info(
-                f"{prefix} epoch:{epoch:3d}, Acc:{acc_val:.3f}, precision:{precision_val:.3f}, "
-                f"Recall:{recall_val:3.3f}, F1:{f1_val:6.3f}, "
-                f"AUROC:{roc_val:3.3f}, AUPRC:{prc_val:6.3f}")
+        acc_val, precision_val, recall_val, f1_val, roc_val, prc_val = \
+            classification_eval(torch.cat(list_pred), torch.cat(list_true))
+        logger.info("#"*20)
+        logger.info(
+            f"{prefix} Step:{epoch:3d}, Acc:{acc_val:.3f}, "
+            # f"precision:{precision_val:.3f}, Recall:{recall_val:3.3f}, F1:{f1_val:6.3f}, "
+            f"AUROC:{roc_val:3.3f}, AUPRC:{prc_val:6.3f}")
 
-            if np.isnan(f1_val):
-                f1_val = 0
-            if np.isnan(roc_val):
-                roc_val = 0
-            if np.isnan(prc_val):
-                prc_val = 0
+        if np.isnan(f1_val):
+            f1_val = 0
+        if np.isnan(roc_val):
+            roc_val = 0
+        if np.isnan(prc_val):
+            prc_val = 0
 
-            return medae_value, acc_val, f1_val, roc_val, prc_val
-
-    return
+        return medae_value, acc_val, f1_val, roc_val, prc_val
 
 
 def save_embedding(encoder_model, predictor_model, loader, prefix, args):
@@ -179,10 +170,12 @@ def train_risk(args, logger):
     train_dataloader = DataLoader(train_dataset,
                                   batch_size = args.batch_size,
                                   shuffle= True,
-                                  drop_last = True )
+                                  drop_last = True,
+                                  num_workers = 16)
     val_dataloader = DataLoader(val_dataset,
                                  batch_size = args.batch_size * 3,
-                                 shuffle= True )
+                                 shuffle= True,
+                                num_workers = 16 )
 
     # models
     encoder_hidden_list = [int(i.strip()) for i in args.encoder_hidden_str.split(",")]
@@ -195,6 +188,11 @@ def train_risk(args, logger):
                                            hidden_list= decoder_hidden_list,
                                            h_dim = 1,
                                            if_dp=False )
+    regression_model = FCNet_H(feature_channel = args.latent_size,
+                               output_channel = 1,
+                               hidden_list = decoder_hidden_list,
+                               if_bn = False,
+                               if_dp = False)
     predictor_model = FCNet_H_class(feature_channel = args.latent_size,
                                     output_channel = 2,
                                     hidden_list = decoder_hidden_list,
@@ -204,11 +202,13 @@ def train_risk(args, logger):
     if torch.cuda.is_available():
         encoder.cuda()
         decoder.cuda()
+        regression_model.cuda()
         predictor_model.cuda()
     if torch.cuda.device_count() > 1:
         print("Let's use", torch.cuda.device_count(), "GPUs!")
         encoder = nn.DataParallel(encoder)
         decoder = nn.DataParallel(decoder)
+        regression_model = nn.DataParallel(regression_model)
         predictor_model = nn.DataParallel(predictor_model)
 
     # loss function
@@ -222,21 +222,24 @@ def train_risk(args, logger):
         {'params': encoder.parameters(), 'lr': args.learning_rate*0.5},
         {'params': predictor_model.parameters(), 'lr': args.learning_rate*0.2}
     ])
+    mrs_optimizer = optim.Adam([
+        {'params': encoder.parameters(), 'lr': args.learning_rate*0.5},
+        {'params': regression_model.parameters(), 'lr': args.learning_rate*0.2}
+    ], weight_decay=1e-4)
 
     # training
     project_id_list = [pretrain_dataset[i][2]["project_id"] for i, _ in enumerate(pretrain_dataset)]
     counter_dataset = Counter(project_id_list)
     project_id_list = [elem for elem, freq in counter_dataset.items() if freq > 30]
-    val_interval = 10
-    best_mae = 0.1
-    best_f1 = 0.1
-    best_auc = 0.5
+    val_interval = 20
+    best_mae = 0.15
+    best_auc = 0.85
+    best_aupr = 0.3
     best_epoch = 0
     for epoch in range(1, args.num_epochs+1):
         encoder.train()
         decoder.train()
         predictor_model.train()
-        # dataset_id = random.choice(project_id_list)
         list_loss = []
         for dataset_id in random.sample(project_id_list, 3):
             training_dataset_batch = tuple(
@@ -267,8 +270,8 @@ def train_risk(args, logger):
                         loss_reg = 0
                     loss =  loss_mrs + loss_reg
 
-                    if loss > 1:
-                        import pdb; pdb.set_trace()
+                    # if loss > 1:
+                    #     import pdb; pdb.set_trace()
 
                     contrast_optimizer.zero_grad( )
                     loss.backward()
@@ -277,7 +280,21 @@ def train_risk(args, logger):
                     break
                 break
         if args.save_log == 'True':
-            logger.info( f"epoch:{epoch:3d}, train mrs loss:{np.mean(list_loss):6.5f}" )
+            logger.info( f"Step:{epoch:3d}, train mrs loss:{np.mean(list_loss):6.5f}" )
+
+        for batch_idx, (feature, targets,additional) in enumerate(train_dataloader):
+            feature = feature.to(device)
+            targets = targets.to(device)
+            bool_mrs = (targets > -10)
+
+            latent_feature = encoder(feature)
+            predicts = regression_model(latent_feature)
+            loss_mrs = criterion_soft(predicts[bool_mrs], targets[bool_mrs])
+
+            mrs_optimizer.zero_grad()
+            loss_mrs.backward()
+            mrs_optimizer.step()
+            break
 
         if epoch % val_interval == 0:
             for i in range(val_interval//2):
@@ -302,10 +319,9 @@ def train_risk(args, logger):
                 encoder, decoder, predictor_model, criterion_soft, val_dataloader, "validation", epoch
             )
 
-            if (mae_val < best_mae) & (f1_val > best_f1) & (prc_val > best_auc):
-                best_mae = mae_val
-                best_f1 = f1_val
-                best_auc = prc_val
+            if (mae_val < best_mae) & (prc_val > best_aupr) & (roc_val > best_auc):
+                best_aupr = prc_val
+                best_auc = roc_val
                 best_epoch = epoch
                 if args.save_model == 'True':
                     if torch.cuda.device_count() > 1:
@@ -320,13 +336,22 @@ def train_risk(args, logger):
                     save_embedding(encoder, predictor_model, train_dataloader, "train", args)
                     save_embedding(encoder, predictor_model, val_dataloader,  "val" , args)
             if args.save_log == 'True':
-                logger.info( f"Best epoch:{best_epoch:3d}, ct_MAE:{best_mae:6.5f}, "
-                             f"F1:{best_mae:6.5f}, AUPRC:{best_mae:6.5f}" )
+                logger.info( f"Best epoch:{best_epoch:3d}, MAE:{mae_val:6.5f}, "
+                             f"AUROC:{best_auc:6.5f}, AUPRC:{best_aupr:6.5f}" )
 
             # early stop
             if (epoch - best_epoch >= args.patience_epoch) & (best_epoch > 0):
                 print("Model have been saved in 'best_model.pt'")
                 return
+
+    if torch.cuda.device_count() > 1:
+        checkpoint = {"encoder_state_dict": encoder.module.state_dict(),
+                      "predictor_state_dict": predictor_model.module.state_dict()}
+    else:
+        checkpoint ={"encoder_state_dict": encoder.state_dict(),
+                     "predictor_state_dict": predictor_model.state_dict()}
+    filename = os.path.join(os.path.join(args.path_save, 'checkpoints'), "best_model.pt")
+    ModelUtils.save_checkpoint(checkpoint, filename=filename)
 
     return
 
@@ -430,7 +455,7 @@ def train_age(args, logger):
             break
 
         if epoch % val_interval == 0:
-            for i in range(5):
+            for i in range(val_interval):
                 for batch_idx, (feature, targets,additional) in enumerate(train_dataloader):
                     feature = feature.to(device)
                     targets = targets.to(device) / age_norm_value
@@ -479,6 +504,15 @@ def train_age(args, logger):
             encoder.train()
             decoder.train()
             predictor_model.train()
+
+    if torch.cuda.device_count() > 1:
+        checkpoint = {"encoder_state_dict": encoder.module.state_dict(),
+                      "predictor_state_dict": predictor_model.module.state_dict()}
+    else:
+        checkpoint ={"encoder_state_dict": encoder.state_dict(),
+                     "predictor_state_dict": predictor_model.state_dict()}
+    filename = os.path.join(os.path.join(args.path_save, 'checkpoints'), "best_model.pt")
+    ModelUtils.save_checkpoint(checkpoint, filename=filename)
 
     return
 

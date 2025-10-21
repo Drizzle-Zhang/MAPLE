@@ -6,3 +6,4 @@ torch==2.7.1
 Bio==1.8.0
 pygtrans==1.6.1
 dataclasses_json==0.6.7
+tensorboard==2.9.0
