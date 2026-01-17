@@ -47,7 +47,7 @@ Conventional epigenetic clocks encounter challenges in generalizability, especia
 ## Model Checkpoints
 To use MAPLE, you’ll need to download the model checkpoints as a compressed archive, extract the archive, and place the extracted model parameters into the "checkpoints" folder.
 
-Download model parameters: [Google Drive](https://drive.google.com/file/d/1Qyv6yvj2seBarpMudK8O9xGqEZja6Wkt/view?usp=sharing)
+Download model parameters: [Google Drive](https://drive.google.com/file/d/1cYjp4UqXEgM8QHV2p-qekoadW-37itH8/view?usp=drive_link)
 
 ## Inference
 
